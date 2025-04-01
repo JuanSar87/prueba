@@ -86,7 +86,6 @@ Debe indicar que no hay cambios pendientes si todo salió bien.
 
 Con estos pasos, tu repositorio local estará actualizado con los últimos cambios de GitHub. 🚀
 
-
 📖 Manual: Actualizar cambios de local a GitHub
 1️⃣ Configurar Git (si es la primera vez)
 Antes de hacer cualquier cambio, asegúrate de que Git está configurado correctamente.
