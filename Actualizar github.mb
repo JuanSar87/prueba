@@ -1,122 +1,204 @@
-📖 Manual: Actualizar cambios de local a GitHub
-1️⃣ Configurar Git (si es la primera vez)
-Antes de hacer cualquier cambio, asegúrate de que Git está configurado correctamente.
+# Informe del Proyecto MLOps
 
-📌 Ejecuta en la terminal (solo la primera vez):
+## 1. Introducción
+Este informe documenta la estructura y configuración del proyecto **MLOps**, incluyendo la programación de los archivos creados y su funcionalidad dentro del entorno Dockerizado.
 
-bash
-Copiar
-Editar
-git config --global user.name "Tu Nombre"
-git config --global user.email "tu_correo@example.com"
-Ejemplo:
+## 2. Estructura del Proyecto
+La estructura del directorio es la siguiente:
+```
+Proyecto_02/
+├── api_inferencia/
+│   ├── main.py
+│   ├── Dockerfile
+│   ├── requirements.txt
+├── dags/
+│   ├── train_model_dag.py
+├── mlflow/
+├── ui/
+├── docker-compose.yml
+├── Dockerfile
+├── requirements.txt
+```
 
-bash
-Copiar
-Editar
-git config --global user.name "Juan Pérez"
-git config --global user.email "juanperez@example.com"
-Para verificar la configuración:
+## 3. Archivos y su Programación
 
-bash
-Copiar
-Editar
-git config --list
-2️⃣ Ir al directorio del proyecto
-📌 Navega hasta la carpeta donde está tu repositorio:
+### 3.1 `api_inferencia/main.py`
+Este archivo contiene la implementación de la API de inferencia con **FastAPI**, cargando un modelo de MLflow y exponiendo un endpoint para predicciones.
+```python
+from fastapi import FastAPI
+import mlflow.pyfunc
+import pandas as pd
 
-bash
-Copiar
-Editar
-cd /ruta/del/repositorio
-Ejemplo:
+app = FastAPI()
 
-bash
-Copiar
-Editar
-cd /home/estudiante/MLOps_2510
-3️⃣ Ver el estado del repositorio
-Antes de subir los cambios, revisa qué archivos han cambiado:
+# Cargar el modelo desde MLflow
+model_uri = "models:/forest_cover_prediction/latest"
+model = mlflow.pyfunc.load_model(model_uri)
 
-bash
-Copiar
-Editar
-git status
-Si ves archivos en rojo, significa que están modificados o no rastreados.
+@app.post("/predict")
+def predict(data: dict):
+    df = pd.DataFrame([data])
+    prediction = model.predict(df)
+    return {"prediction": prediction.tolist()}
 
-4️⃣ Agregar los archivos al área de preparación
-📌 Para agregar todos los archivos modificados:
+@app.get("/")
+def home():
+    return {"message": "API de Inferencia activa"}
+```
 
-bash
-Copiar
-Editar
-git add .
-Si quieres agregar archivos específicos:
+### 3.2 `api_inferencia/Dockerfile`
+Este Dockerfile configura el entorno de la API de inferencia.
+```dockerfile
+FROM python:3.9
 
-bash
-Copiar
-Editar
-git add nombre_del_archivo
-5️⃣ Hacer un commit (guardar cambios localmente)
-📌 Escribe un mensaje que describa los cambios:
+WORKDIR /app
 
-bash
-Copiar
-Editar
-git commit -m "Descripción de los cambios"
-Ejemplo:
+COPY requirements.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-bash
-Copiar
-Editar
-git commit -m "Corrigiendo configuración en docker-compose y agregando Dockerfile"
-6️⃣ Obtener los cambios más recientes desde GitHub
-Antes de subir los cambios, asegúrate de que tu copia local está actualizada:
+COPY . .
 
-bash
-Copiar
-Editar
-git pull origin main --rebase
-Si hay conflictos, resuélvelos antes de continuar.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
 
-7️⃣ Subir los cambios a GitHub
-📌 Para enviar los cambios al repositorio remoto:
+### 3.3 `api_inferencia/requirements.txt`
+Contiene las dependencias necesarias para la API de inferencia.
+```text
+fastapi
+uvicorn
+mlflow
+pandas
+scikit-learn
+requests
+```
 
-bash
-Copiar
-Editar
-git push origin main
-Si usas otra rama (branch), reemplaza main por el nombre de la rama.
+### 3.4 `dags/train_model_dag.py`
+Este archivo define un DAG en **Apache Airflow** para la recolección y procesamiento de datos, además del entrenamiento de un modelo.
+```python
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from datetime import datetime, timedelta
+import mlflow
+import pandas as pd
 
-8️⃣ Verificar en GitHub
-📌 Abre tu navegador y entra a GitHub para verificar que los cambios se reflejaron correctamente en tu repositorio.
+def train_model():
+    df = pd.read_csv("data/dataset.csv")
+    model = train_random_forest(df)
+    mlflow.sklearn.log_model(model, "random_forest")
 
-💡 Solución a Errores Comunes
-❌ Git no reconoce tu usuario
-Si aparece el error:
+def train_random_forest(df):
+    from sklearn.ensemble import RandomForestClassifier
+    model = RandomForestClassifier()
+    model.fit(df.drop('target', axis=1), df['target'])
+    return model
 
-sql
-Copiar
-Editar
-Author identity unknown
-📌 Configura Git con tu usuario:
+default_args = {
+    'owner': 'airflow',
+    'depends_on_past': False,
+    'start_date': datetime(2024, 4, 1),
+    'retries': 1,
+    'retry_delay': timedelta(minutes=5),
+}
 
-bash
-Copiar
-Editar
-git config --global user.name "Tu Nombre"
-git config --global user.email "tu_correo@example.com"
-❌ Error: ‘Everything up-to-date’ pero los archivos no aparecen en GitHub
-Si Git dice que todo está actualizado pero los cambios no aparecen, intenta:
+dag = DAG(
+    'train_model',
+    default_args=default_args,
+    description='DAG para preprocesar datos y entrenar un modelo',
+    schedule_interval=timedelta(hours=1),
+    catchup=False,
+)
 
-bash
-Copiar
-Editar
-git push --force origin main
-❌ Error de autenticación (Acceso denegado)
-Si Git te pide credenciales y no las acepta:
+train_task = PythonOperator(
+    task_id='train_model',
+    python_callable=train_model,
+    dag=dag,
+)
 
-Si usas HTTPS, genera un Personal Access Token (PAT) en GitHub y úsalo en lugar de la contraseña.
+train_task
+```
 
-Si usas SSH, asegúrate de haber agregado tu clave SSH a GitHub.
+### 3.5 `Dockerfile` (General del Proyecto)
+Este archivo define la configuración base del entorno Docker del proyecto.
+```dockerfile
+FROM python:3.9
+
+WORKDIR /app
+
+COPY requirements.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+CMD ["bash"]
+```
+
+### 3.6 `requirements.txt` (General del Proyecto)
+Lista las dependencias generales del proyecto.
+```text
+apache-airflow
+fastapi
+uvicorn
+mlflow
+pandas
+scikit-learn
+requests
+mysql-connector-python
+boto3
+```
+
+### 3.7 `docker-compose.yml`
+Define los servicios de Docker para el entorno completo.
+```yaml
+version: '3.8'
+
+services:
+  mlops_env:
+    build: .
+    container_name: mlops_env
+    restart: always
+    volumes:
+      - .:/app
+    command: tail -f /dev/null
+
+  api_inferencia:
+    build: ./api_inferencia
+    container_name: api_inferencia_mlops
+    restart: always
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mlflow
+```
+
+## 4. Instrucciones para Ejecutar el Proyecto
+
+### 4.1 Construcción y Ejecución de los Contenedores
+Ejecutar el siguiente comando en la raíz del proyecto:
+```bash
+docker-compose up --build -d
+```
+
+### 4.2 Verificación de Contenedores
+Para asegurarse de que todos los contenedores están en ejecución:
+```bash
+docker ps
+```
+
+### 4.3 Acceder al Contenedor Principal
+```bash
+docker exec -it mlops_env bash
+```
+
+### 4.4 Pruebas de la API
+Verificar si la API está activa:
+```bash
+curl http://localhost:8000/
+```
+Prueba de predicción:
+```bash
+curl -X POST "http://localhost:8000/predict" -H "Content-Type: application/json" -d '{"feature1": 1.2, "feature2": 3.4, "feature3": 5.6}'
+```
+
+## 5. Conclusión
+Este informe documenta la configuración y desarrollo del proyecto MLOps, incluyendo la definición de la API de inferencia, el DAG de Airflow para entrenamiento, y la configuración de los servicios en Docker. Con estos archivos, el entorno está listo para ejecutar modelos de machine learning de manera automatizada y escalable.
 
